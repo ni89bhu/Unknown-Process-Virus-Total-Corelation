@@ -1,0 +1,2 @@
+C:\Program Files (x86)\Adobe\Acrobat Reader DC\Reader\plug_ins\DigSig.api
+C:\Program Files\7-Zip\7zG.exe
