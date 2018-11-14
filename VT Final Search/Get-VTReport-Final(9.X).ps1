@@ -5,13 +5,14 @@
 #>Perform log search for event id 8005, source EventTracker for specified duration.                                                    #
 #>Extract useful fields from logs and get VirusTotal score for all hashes.                                                             #
 #>Generate consolidated report of output with scores.                                                                                  #
-#                                                                                                                                      # 
+#>Truncate temporary/old files.                                                                                                        #
+#                                                                                                                                      #
 #<Input>                                                                                                                               #
-#>Run .\Input\Integrator_VT.ps1, provide VT API Key and evaluation duration.                                                           # 
+#>Run .\Input\Integrator_VT.ps1, provide VT API Key and evaluation duration.                                                           #
 #>Add process names and hashes to to filtered in .\Filters\Filter_File.txt and .\Filters\Filter_Hash.txt                               #
 #                                                                                                                                      #
 #<Output>                                                                                                                              #
-#>HTML and CSV reports will be generated in .\Output folder.                                                                           #                                                                                                                                   #
+#>HTML and CSV reports will be generated in .\Output folder.                                                                           #
 #                                                                                                                                      #
 #CreatedBy:kumarnitesh@eventtracker.com                                                                                                #
 #Created On:11/12/18                                                                                                                   #
@@ -25,12 +26,20 @@ $inputpath = "$scriptdir\Input"
 $outputpath = "$scriptdir\Output"
 $temppath = "$scriptdir\Temp"
 $filterpath = "$scriptdir\Filters"
+$backuppath = "$scriptdir\Backup"
 ########################################################################################################################################
 
 #Get input from config and filter files#
 $input = Import-Clixml -Path "$inputpath\Conf.xml"
 $apikey = $input.apikey
 $duration = "-{0}" -f $input.duration
+$company = "Netsurion"
+
+$SMTPServer = "eventtracker-com.mail.protection.outlook.com"
+$SMTPPort = "25"
+$From = "kumarnitesh@eventtracker.com"
+$To = "ECC-HARMONY@EventTracker.com"
+$Subject = "Hourly VirusTotal Report({0})" -f $company
 
 $w1 = Get-Content -Path "$filterpath\Filter_File.txt"
 [array]$we1 = $w1 -split "\n"
@@ -128,7 +137,7 @@ $logparmeter02.SearchValue = "EventTracker"
 $logcerteria.AdvancedParameter = $logparmeter01
 $logcerteria.AdvancedParameter += $logparmeter02
 $logticks = (get-date).Ticks
-$mdbname1 = "LogonAnalysis_{0}" -f $logticks
+$mdbname1 = "VTAnalysis_{0}" -f $logticks
 $param = new-object Prism.LogSearchParameter.LogSearchParameterContext ("$mdbname1")
 $param.Update($logcerteria)
 $search = new-object Prism.LogSearchProcess.LogSearchProcessing ("$mdbname1")
@@ -166,7 +175,8 @@ $result1 | Export-Csv -Path "$temppath\o2.csv" -NoTypeInformation
 
 #Join outputs of Temp folder to create consolidated csv report#
 $dt = Get-Date -Format MMddyyy_HHmmss
-$fname= "VTReport_{0}" -f $dt 
+$fname= "VTReport_{0}_{1}" -f $dt,$env:COMPUTERNAME
+$fname1= "VTReport_{0}" -f $env:COMPUTERNAME  
 
 $f1= Import-Csv -Path "$temppath\o1.csv" | select *,VTScore,VTDetails
 $f2= Import-Csv -Path "$temppath\o2.csv"
@@ -177,13 +187,15 @@ $f1 | %{
       $_.VTDetails=$m.VTDetails
        }
 
-(($f1 | Sort-Object EventTime -Descending) | Select-Object EventTime,HostName,UserName,FileName,CreatorFileName,FileHash,VTScore,VTDetails) | Export-Csv -Path "$outputpath\$fname.csv" -NoTypeInformation
+(($f1 | Sort-Object EventTime -Descending) | Select-Object EventTime,HostName,UserName,FileName,CreatorFileName,FileHash,VTScore,VTDetails) | Export-Csv -Path "$backuppath\$fname.csv" -NoTypeInformation
 ########################################################################################################################################
 
 #Convert consolidated csv report to HTML#
-$final = Import-csv -Path "$outputpath\$fname.csv"
+$final = Import-csv -Path "$backuppath\$fname.csv"
 $df = Get-Date -Format G
+$evcount =  ($final|Measure-Object).count
 
+If ($evcount -ge 1){
 $Head = @"
 <style>
 html,
@@ -277,15 +289,53 @@ border: 1px solid #fff;
 </style>
 "@
 $Title = @"
-<div class="caption"><font size="20">VT Report $df</font></div>
+<div class="caption"><font size="20">$company VT Report $df $env:COMPUTERNAME</font></div>
 "@
 
 $body = $final | select *,@{name="VTURL";Expression={If ($_.VTDetails -ne "-"){'<a href="{0}" class="button" style="text-decoration: none;">VTLink</a>' -f $_.VTDetails} else {'N/A'}}} -ExcludeProperty VTDetails
 
-(($body | ConvertTo-Html -Head $Head -PreContent $Title) | foreach {$_.replace("&lt;","<").replace("&gt;",">").replace("&quot;",'"')})| Out-File "$outputpath\$fname.html" 
+(($body | ConvertTo-Html -Head $Head -PreContent $Title) | foreach {$_.replace("&lt;","<").replace("&gt;",">").replace("&quot;",'"')})| Out-File "$outputpath\$fname.html"
+
+$body1    =  @"
+<p><strong><span style="font-family: Verdana, Geneva, sans-serif; font-size: 24px;">Hourly VirusTotal Report</span></strong></p>
+<hr>
+<table style="width: 100%;">
+    <tbody>
+        <tr>
+            <td style="width: 33.6553%; background-color: rgb(84, 172, 210);"><span style="font-size: 18px;">Company Name</span><br></td>
+            <td style="width: 66.0226%; background-color: rgb(235, 107, 86);"><span style="font-size: 24px;">$company</span><br></td>
+        </tr>
+        <tr>
+            <td style="width: 33.6553%; background-color: rgb(84, 172, 210);"><span style="font-size: 18px;">System Name</span><br></td>
+            <td style="width: 66.0226%; background-color: rgb(235, 107, 86);"><span style="font-size: 24px;">$env:computername</span><br></td>
+        </tr>
+        <tr>
+            <td style="width: 33.6553%; background-color: rgb(84, 172, 210);"><span style="font-size: 18px;">Generated On</span><br></td>
+            <td style="width: 66.0226%; background-color: rgb(235, 107, 86);"><span style="font-size: 24px;">$df<br></span></td>
+        </tr>
+    </tbody>
+</table>
+<p><br></p>
+"@
+
+Send-MailMessage -From $From -to $To -Subject $Subject -Body $Body1 -SmtpServer $SMTPServer -port $SMTPPort -UseSsl -BodyAsHtml -Attachments "$outputpath\$fname.html"
+}
 ########################################################################################################################################
 
-#Truncate Temp folder contents#
-Get-ChildItem -Path "$temppath" -Filter "*.csv" | Remove-Item
+#Generate alert for VTScore >= 1#
+$computer = $env:COMPUTERNAME
+($final | Where-Object {([int](($_.VTScore).split("/")[0])) -ge 1}) | ForEach-Object {
+$rt = (($_| Out-String).trim()).Replace("\","\\")
+& "$etpath\ScheduledActionScripts\sendtrap.exe" ET $env:COMPUTERNAME $computer 3 2 "EventTracker" 0 8027 "Bad hash detected\n\nDetails:\n$rt" N/A N/A " " 14505
+}
 ########################################################################################################################################
+
+#Truncate Temp, Backup and Output folder contents#
+Get-ChildItem -Path "$temppath" -Filter "*.csv" | Remove-Item
+Get-ChildItem "$backuppath\VTReport*.csv" |
+  ForEach-Object { Import-Csv $_ } |
+  Export-Csv "$outputpath\$fname1.csv" -NoTypeInformation
+Get-ChildItem -Path "$backuppath" -Filter "VTReport*.csv" | Remove-Item
+(Get-ChildItem -Path "$outputpath" -Filter "VTReport*.html"| Where-Object{$_.LastWriteTime -lt ((get-date).AddDays(-1))}) | Remove-Item
+########################################################################################################################################>
 ########################################################################################################################################
