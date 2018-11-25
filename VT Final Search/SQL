@@ -27,3 +27,11 @@ ORDER BY LogTime Desc
                          "
 
 $table = Invoke-Sqlcmd -ServerInstance ".\SQLEXPRESS" -Database "EventTrackerData" -Query $query1
+
+$md5 = "E8D67C32357726661988ADD5BCDDD437"
+$query = "UPDATE EAMD5HashStatus
+SET Status = 1
+WHERE MD5_Hash = '$md5'
+"
+
+Invoke-Sqlcmd -ServerInstance ".\SQLEXPRESS" -Database "EventTrackerData" -Query $query
