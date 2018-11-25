@@ -35,3 +35,39 @@ WHERE MD5_Hash = '$md5'
 "
 
 Invoke-Sqlcmd -ServerInstance ".\SQLEXPRESS" -Database "EventTrackerData" -Query $query
+##########################
+
+$logprocessdll = [System.Reflection.Assembly]::LoadFrom("$etpath\AdvancedReports\Prism.LogSearchProcess.dll")
+$logparmeterdll = [System.Reflection.Assembly]::LoadFrom("$etpath\AdvancedReports\Prism.LogSearchParameter.dll")
+$datapersist = [System.Reflection.Assembly]::LoadFrom("$etpath\AdvancedReports\Prism.Report.DataPersistance.dll")
+
+#################################################################################################################################################################################################################
+#################################################################################################################################################################################################################
+
+$logparmeter01 = New-Object Prism.LogSearchParameter.AdvanceParameter
+$logparmeter02 = New-Object Prism.LogSearchParameter.AdvanceParameter
+$logcerteria = New-Object Prism.LogSearchParameter.LogSearchParameter
+$searchconfig = New-Object Prism.LogSearchParameter.SearchConfig
+$searchconfig.IsParseTokens = "False"
+$logcerteria.FromDate = (get-date).AddHours($duration)
+$logcerteria.ToDate = (get-date)
+$logcerteria.SystemGroups = "All Windows Systems"
+$logcerteria.SystemIncludeType = 1
+$logparmeter01.ParameterId = 0
+$logparmeter01.Operator = 1
+$logparmeter01.ParameterName = "event id"
+$logparmeter01.ParameterType = 1
+$logparmeter01.SearchValue = "4625"
+$logparmeter02.ParameterId = 0
+$logparmeter02.Operator = 1
+$logparmeter02.ParameterName = "source"
+$logparmeter02.ParameterType = 1
+$logparmeter02.SearchValue = "Microsoft-Windows-Security-Auditing"
+$logcerteria.AdvancedParameter = $logparmeter01
+$logcerteria.AdvancedParameter += $logparmeter02
+$logticks = (get-date).Ticks
+$mdbname1 = "LogonAnalysis_{0}" -f $logticks
+$param = new-object Prism.LogSearchParameter.LogSearchParameterContext ("$mdbname1")
+$param.Update($logcerteria)
+$search = new-object Prism.LogSearchProcess.LogSearchProcessing ("$mdbname1")
+$search.StartProcessing(4) | Out-Null
