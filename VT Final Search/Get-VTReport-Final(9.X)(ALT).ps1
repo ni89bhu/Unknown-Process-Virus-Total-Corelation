@@ -5,13 +5,14 @@
 #>Perform log search for event id 8005, source EventTracker for specified duration.                                                    #
 #>Extract useful fields from logs and get VirusTotal score for all hashes.                                                             #
 #>Generate consolidated report of output with scores.                                                                                  #
-#                                                                                                                                      # 
+#>Truncate temporary/old files.                                                                                                        #
+#                                                                                                                                      #
 #<Input>                                                                                                                               #
-#>Run .\Input\Integrator_VT.ps1, provide VT API Key and evaluation duration.                                                           # 
+#>Run .\Input\Integrator_VT.ps1, provide VT API Key and evaluation duration.                                                           #
 #>Add process names and hashes to to filtered in .\Filters\Filter_File.txt and .\Filters\Filter_Hash.txt                               #
 #                                                                                                                                      #
 #<Output>                                                                                                                              #
-#>HTML and CSV reports will be generated in .\Output folder.                                                                           #                                                                                                                                   #
+#>HTML and CSV reports will be generated in .\Output folder.                                                                           #
 #                                                                                                                                      #
 #CreatedBy:kumarnitesh@eventtracker.com                                                                                                #
 #Created On:11/12/18                                                                                                                   #
@@ -25,19 +26,35 @@ $inputpath = "$scriptdir\Input"
 $outputpath = "$scriptdir\Output"
 $temppath = "$scriptdir\Temp"
 $filterpath = "$scriptdir\Filters"
+$backuppath = "$scriptdir\Backup"
 ########################################################################################################################################
-
 #Get input from config and filter files#
 $input = Import-Clixml -Path "$inputpath\Conf.xml"
-$apikey = $input.apikey
-$duration = "-{0}" -f $input.duration
-$company = "Netsurion"
-
-$SMTPServer = "eventtracker-com.mail.protection.outlook.com"
-$SMTPPort = "25"
-$From = "kumarnitesh@eventtracker.com"
-$To = "ECC-HARMONY@EventTracker.com"
-$Subject = "Hourly VirusTotal Report({0})" -f $company
+  $PW1 = $input.SQLPW | ConvertTo-SecureString -AsPlainText -Force 
+  $PW2 = $input.SMTPPW | ConvertTo-SecureString -AsPlainText -Force
+$NState = $input.NINEX
+$EState = $input.EIGHTX
+$ETDBState = $input.ETDB
+$ETSState = $input.ETSEARCH
+$SQLAState = $input.SQLAUTH
+$WINAState = $input.WAUTH
+$SMTPEState = $input.SMTEN
+$SMTPAState = $input.SMTPAU
+$WLState = $input.WLHASH
+$SFREQ = ("-{0}" -f $input.SFREQ).Replace("Hour","").Replace("Hours","")
+$VTSCORE = $input.VTSCORE
+$VTAPI = $input.VTAPI
+$SQLUN = $input.SQLUN
+$SQLPW =  New-Object System.Management.Automation.PSCredential -ArgumentList $env:USERNAME, $PW1
+$SQLIN = $input.SQLINS
+$SMTPIP = $input.SMTPIP
+$SMTPPP = $input.SMTPPO
+$SMTPF = $input.SMTPFROM
+$SMTPT = $input.SMTPTO
+$SMTPUN = $input.SMTPUN
+$SMTPPW = New-Object System.Management.Automation.PSCredential -ArgumentList $env:USERNAME, $PW2
+$CNAME = $input.CNAME
+$Subject = "Hourly VirusTotal Report({0})" -f $CNAME
 
 $w1 = Get-Content -Path "$filterpath\Filter_File.txt"
 [array]$we1 = $w1 -split "\n"
@@ -135,7 +152,7 @@ $logparmeter02.SearchValue = "EventTracker"
 $logcerteria.AdvancedParameter = $logparmeter01
 $logcerteria.AdvancedParameter += $logparmeter02
 $logticks = (get-date).Ticks
-$mdbname1 = "LogonAnalysis_{0}" -f $logticks
+$mdbname1 = "VTAnalysis_{0}" -f $logticks
 $param = new-object Prism.LogSearchParameter.LogSearchParameterContext ("$mdbname1")
 $param.Update($logcerteria)
 $search = new-object Prism.LogSearchProcess.LogSearchProcessing ("$mdbname1")
@@ -173,7 +190,8 @@ $result1 | Export-Csv -Path "$temppath\o2.csv" -NoTypeInformation
 
 #Join outputs of Temp folder to create consolidated csv report#
 $dt = Get-Date -Format MMddyyy_HHmmss
-$fname= "VTReport_{0}" -f $env:COMPUTERNAME 
+$fname= "VTReport_{0}_{1}" -f $dt,$CNAME
+$fname1= "VTReport_{0}" -f $CNAME 
 
 $f1= Import-Csv -Path "$temppath\o1.csv" | select *,VTScore,VTDetails
 $f2= Import-Csv -Path "$temppath\o2.csv"
@@ -184,90 +202,66 @@ $f1 | %{
       $_.VTDetails=$m.VTDetails
        }
 
-(($f1 | Sort-Object EventTime -Descending) | Select-Object EventTime,HostName,UserName,FileName,CreatorFileName,FileHash,VTScore,VTDetails) | Export-Csv -Path "$outputpath\$fname.csv" -Append -NoTypeInformation
+(($f1 | Sort-Object EventTime -Descending) | Select-Object EventTime,HostName,UserName,FileName,CreatorFileName,FileHash,VTScore,VTDetails) | Export-Csv -Path "$backuppath\$fname.csv" -NoTypeInformation
 ########################################################################################################################################
 
 #Convert consolidated csv report to HTML#
-$final = Import-csv -Path "$outputpath\$fname.csv"
+$final = Import-csv -Path "$backuppath\$fname.csv"
 $df = Get-Date -Format G
 $evcount =  ($final|Measure-Object).count
 
 If ($evcount -ge 1){
-$Head = @"
-<style>
-html,
-	 .caption {
-  padding: 15px 15px;
-  color: #fff;
+$Head = @'
+<link href="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css" rel="stylesheet">   
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+<link rel="stylesheet" 
+href="http://cdn.datatables.net/1.10.2/css/jquery.dataTables.min.css"></style>
+<script type="text/javascript" 
+src="http://cdn.datatables.net/1.10.2/js/jquery.dataTables.min.js"></script>
+<script type="text/javascript" 
+src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+<script>
+$(document).ready(function(){
+    $('#myTable').dataTable();
+});
+</script>
+<style type="text/css">
+  html,
+   .caption {
+  padding: 10px 10px;
+  color: black;
   font-weight: bold;
   text-align: left;
-	 }
-
-body {
-  height: 100%;
-}
-body {
-  margin: 0;
-  background: radial-gradient(circle, #49a09d, #5f2c82);
-  font-family: sans-serif;
-  font-weight: 100;
-}
-.container {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  -webkit-transform: translate(-50%, -50%);
-          transform: translate(-50%, -50%);
-}
+  font-size:x-large;  
+   }
 table {
   width: 800px;
-  border-collapse: separate;
   overflow: hidden;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
   white-space: nowrap;
-  cellpadding="10"
-}
-td {
-  padding: 20px;
-  background-color: rgba(255, 255, 255, 0.2);
-  color: #fff;
-}
-th {
-  padding: 10px 10px;
-  font-size: large;
-  color: #fff;
-  text-transform: uppercase;
-    font-weight: bold;
-    text-align: center;
-    border-collapse: separate;
-border: 1px solid #3366cc;
-}
-thead th {
-  background-color: #55608f;
-}
-tbody tr:hover {
-  background-color: rgba(255, 255, 255, 0.3);
-}
-tbody td {
-  position: relative;
-}
-tbody td:hover:before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -9999px;
-  bottom: -9999px;
-  background-color: rgba(255, 255, 255, 0.2);
-  z-index: -1;
+  border:none;
+  border-collapse: collapse;
 }
 
+th {
+    border-left: 1px solid #000;
+    border-right: 1px solid #000;
+    color: black;
+    font-size:large;
+}
+
+td {
+    border-left: 1px solid #000;
+    border-right: 1px solid #000;
+    font-size:medium;
+    font-weight: normal;
+}
 .button {
-width: 6px;
-padding: 15px;
+width: 2px;
+padding: 7px;
 cursor: pointer;
 font-weight: bold;
-font-size: 90%;
+font-size: 70%;
 background: #3366cc;
 color: #fff;
 border: 1px solid #3366cc;
@@ -282,16 +276,15 @@ color: #f90000;
 background: #3366cc;
 border: 1px solid #fff;
 }
-
 </style>
-"@
+'@
 $Title = @"
-<div class="caption"><font size="20">$company VT Report $df $env:COMPUTERNAME</font></div>
+<div class="caption"><font size="20">VT Report $df</font></div>
 "@
 
 $body = $final | select *,@{name="VTURL";Expression={If ($_.VTDetails -ne "-"){'<a href="{0}" class="button" style="text-decoration: none;">VTLink</a>' -f $_.VTDetails} else {'N/A'}}} -ExcludeProperty VTDetails
 
-(($body | ConvertTo-Html -Head $Head -PreContent $Title) | foreach {$_.replace("&lt;","<").replace("&gt;",">").replace("&quot;",'"')})| Out-File "$outputpath\$fname.html"
+((($body | ConvertTo-Html -Head $Head -PreContent $Title).replace('<colgroup><col/><col/><col/><col/><col/><col/><col/><col/></colgroup>',"").replace('<tr><th>EventTime','<thead><tr><th>EventTime').replace('VTURL</th></tr>','VTURL</th></tr></thead><tbody>').replace('<table>','<div class="table-responsive"><table id="myTable" class="display table" width="100%" >').replace('</table>','</tbody></table></div>')) | foreach {$_.replace("&lt;","<").replace("&gt;",">").replace("&quot;",'"')})| Out-File "$outputpath\$fname.html"
 
 $body1    =  @"
 <p><strong><span style="font-family: Verdana, Geneva, sans-serif; font-size: 24px;">Hourly VirusTotal Report</span></strong></p>
@@ -322,15 +315,17 @@ Send-MailMessage -From $From -to $To -Subject $Subject -Body $Body1 -SmtpServer 
 #Generate alert for VTScore >= 1#
 $computer = $env:COMPUTERNAME
 ($final | Where-Object {([int](($_.VTScore).split("/")[0])) -ge 1}) | ForEach-Object {
-$rt = ($_ |Out-String)
-& "$etpath\ScheduledActionScripts\sendtrap.exe" ET $env:COMPUTERNAME $computer 3 2 "EventTracker" 0 8027 "Bad hash detected\nDetails:$rt" N/A N/A " " 14505
+$rt = (($_| Out-String).trim()).Replace("\","\\")
+& "$etpath\ScheduledActionScripts\sendtrap.exe" ET $env:COMPUTERNAME $computer 3 2 "EventTracker" 0 8027 "Bad hash detected\n\nDetails:\n$rt" N/A N/A " " 14505
 }
-
 ########################################################################################################################################
 
-#Truncate Temp folder contents#
+#Truncate Temp, Backup and Output folder contents#
 Get-ChildItem -Path "$temppath" -Filter "*.csv" | Remove-Item
+Get-ChildItem "$backuppath\VTReport*.csv" |
+  ForEach-Object { Import-Csv $_ } |
+  Export-Csv "$outputpath\$fname1.csv" -NoTypeInformation
+Get-ChildItem -Path "$backuppath" -Filter "VTReport*.csv" | Remove-Item
+(Get-ChildItem -Path "$outputpath" -Filter "VTReport*.html"| Where-Object{$_.LastWriteTime -lt ((get-date).AddDays(-1))}) | Remove-Item
 ########################################################################################################################################>
 ########################################################################################################################################
-
-
