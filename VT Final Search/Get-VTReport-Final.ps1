@@ -401,10 +401,10 @@ $body1    =  @"
 "@
     If ($SMTPAState -eq "TRUE"){
     $SMTPCRED = New-Object System.Management.Automation.PSCredential -ArgumentList $SMTPUN, $SMTPPW
-    Send-MailMessage -From $From -to $To -Subject $Subject -Body $Body1 -SmtpServer $SMTPServer -port $SMTPPort -Credential $SMTPCRED -UseSsl -BodyAsHtml -Attachments "$outputpath\$fname.html"
+    Send-MailMessage -From $SMTPF -to $SMTPT -Subject $Subject -Body $Body1 -SmtpServer $SMTPIP -port $SMTPPP -Credential $SMTPCRED -UseSsl -BodyAsHtml -Attachments "$outputpath\$fname.html"
         }
     else {
-    Send-MailMessage -From $From -to $To -Subject $Subject -Body $Body1 -SmtpServer $SMTPServer -port $SMTPPort -UseSsl -BodyAsHtml -Attachments "$outputpath\$fname.html"
+    Send-MailMessage -From $SMTPF -to $SMTPT -Subject $Subject -Body $Body1 -SmtpServer $SMTPIP -port $SMTPPP -UseSsl -BodyAsHtml -Attachments "$outputpath\$fname.html"
         }
 
     }
